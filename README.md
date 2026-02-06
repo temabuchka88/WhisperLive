@@ -129,7 +129,15 @@ If you don't want this, set `--no_single_model`.
 
 
 ### Running the Client
-- Initializing the client with below parameters:
+
+Use the below command to run the client:
+```bash
+python3 run_client.py --files <audio-file-name>
+```
+This will connect to the localhost server running on port 9090 by default. Use flags `--server` and `--port` to use different configurations. The above command will transcribe audio file provided with `--files` flag.
+
+
+Here are the details of client instance implemented in `run_client.py` script:
   - `lang`: Language of the input audio, applicable only if using a multilingual model.
   - `translate`: If set to `True` then translate from any language to `en`.
   - `model`: Whisper model size.
