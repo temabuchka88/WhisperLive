@@ -9,6 +9,7 @@ from huggingface_hub import snapshot_download
 
 from whisper_live.transcriber.transcriber_faster_whisper import WhisperModel
 from whisper_live.backend.base import ServeClientBase
+from whisper_live.diarization import create_diarization_manager, DIART_AVAILABLE
 
 
 class ServeClientFasterWhisper(ServeClientBase):
@@ -33,6 +34,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         same_output_threshold=7,
         cache_path="~/.cache/whisper-live/",
         translation_queue=None,
+        use_diarization=False,
     ):
         """
         Initialize a ServeClient instance.
@@ -65,6 +67,25 @@ class ServeClientFasterWhisper(ServeClientBase):
             translation_queue
         )
         self.cache_path = cache_path
+
+        # Diarization setup
+        self.use_diarization = use_diarization and DIART_AVAILABLE
+        self.diarization_manager = None
+        if self.use_diarization:
+            try:
+                self.diarization_manager = create_diarization_manager(
+                    sample_rate=self.RATE,
+                    step=0.5,
+                    latency=0.5,
+                )
+                if self.diarization_manager:
+                    self.diarization_manager.start()
+                    logging.info("[Diarization] Enabled and started")
+                else:
+                    self.use_diarization = False
+            except Exception as e:
+                logging.error(f"[Diarization] Failed to initialize: {e}")
+                self.use_diarization = False
         self.model_sizes = [
             "tiny", "tiny.en", "base", "base.en", "small", "small.en",
             "medium", "medium.en", "large-v2", "large-v3", "distil-small.en",
@@ -116,9 +137,8 @@ class ServeClientFasterWhisper(ServeClientBase):
         self.websocket.send(
             json.dumps(
                 {
-                    "uid": self.client_uid,
-                    "message": self.SERVER_READY,
-                    "backend": "faster_whisper"
+                    "type": "config",
+                    "useAudioWorklet": False # Default to False for now
                 }
             )
         )
@@ -184,7 +204,7 @@ class ServeClientFasterWhisper(ServeClientBase):
             self.language = info.language
             logging.info(f"Detected language {self.language} with probability {info.language_probability}")
             self.websocket.send(json.dumps(
-                {"uid": self.client_uid, "language": self.language, "language_prob": info.language_probability}))
+                {"status": "active_transcription", "lines": [], "buffer_transcription": "", "buffer_diarization": "", "remaining_time_transcription": 0, "remaining_time_diarization": 0}))
 
     def transcribe_audio(self, input_sample):
         """
@@ -229,8 +249,27 @@ class ServeClientFasterWhisper(ServeClientBase):
         segments = []
         if len(result):
             self.t_start = None
-            last_segment = self.update_segments(result, duration)
+            get_speaker = self.diarization_manager.get_current_speakers if self.use_diarization and self.diarization_manager else None
+            last_segment = self.update_segments(result, duration, get_speaker=get_speaker)
             segments = self.prepare_segments(last_segment)
 
         if len(segments):
             self.send_transcription_to_client(segments)
+
+    def add_frames(self, frame_np):
+        """
+        Add audio frames to the ongoing audio stream buffer and diarization manager.
+        """
+        super().add_frames(frame_np)
+        if self.use_diarization and self.diarization_manager:
+            self.diarization_manager.add_audio(frame_np)
+
+    def cleanup(self):
+        """
+        Cleanup resources including diarization manager.
+        """
+        super().cleanup()
+        if self.diarization_manager:
+            logging.info("[Diarization] Stopping...")
+            self.diarization_manager.stop()
+            self.diarization_manager = None

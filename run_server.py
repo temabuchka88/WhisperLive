@@ -66,6 +66,9 @@ if __name__ == "__main__":
         default=None,
         help="Comma-separated list of allowed CORS origins (e.g., 'http://localhost:3000,http://example.com'). Defaults to localhost/127.0.0.1 on the WebSocket port."
     )
+    parser.add_argument('--use_diarization', '-d',
+                        action='store_true',
+                        help='Enable real-time speaker diarization using diart')
     args = parser.parse_args()
 
     if args.backend == "tensorrt":

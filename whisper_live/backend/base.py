@@ -107,25 +107,26 @@ class ServeClientBase(object):
     def handle_transcription_output(self, result, duration):
         raise NotImplementedError
     
-    def format_segment(self, start, end, text, completed=False):
+    def seconds_to_hms(self, seconds: float) -> str:
         """
-        Formats a transcription segment with precise start and end times alongside the transcribed text.
+        Convert seconds to H:MM:SS format.
+        """
+        h = int(seconds // 3600)
+        m = int((seconds % 3600) // 60)
+        s = int(seconds % 60)
+        return f"{h}:{m:02d}:{s:02d}"
 
-        Args:
-            start (float): The start time of the transcription segment in seconds.
-            end (float): The end time of the transcription segment in seconds.
-            text (str): The transcribed text corresponding to the segment.
-
-        Returns:
-            dict: A dictionary representing the formatted transcription segment, including
-                'start' and 'end' times as strings with three decimal places and the 'text'
-                of the transcription.
+    def format_segment(self, start, end, text, completed=False, speaker=None, detected_language=None):
+        """
+        Formats a transcription segment according to whisper_livekit.TranscriptionLine schema.
         """
         return {
-            'start': "{:.3f}".format(start),
-            'end': "{:.3f}".format(end),
+            'speaker': speaker,
             'text': text,
-            'completed': completed
+            'start': self.seconds_to_hms(start),
+            'end': self.seconds_to_hms(end),
+            'detected_language': detected_language,
+            'completed': completed # Keeping this for internal tracking if needed
         }
 
     def add_frames(self, frame_np):
@@ -240,8 +241,12 @@ class ServeClientBase(object):
         try:
             self.websocket.send(
                 json.dumps({
-                    "uid": self.client_uid,
-                    "segments": segments,
+                    "status": "active_transcription",
+                    "lines": segments,
+                    "buffer_transcription": "", # Not used in this backend yet
+                    "buffer_diarization": "",    # Not used in this backend yet
+                    "remaining_time_transcription": 0,
+                    "remaining_time_diarization": 0
                 })
             )
         except Exception as e:
@@ -281,7 +286,7 @@ class ServeClientBase(object):
     def get_segment_end(self, segment):
         return getattr(segment, "end", getattr(segment, "end_ts", 0))
 
-    def update_segments(self, segments, duration):
+    def update_segments(self, segments, duration, get_speaker=None):
         """
         Processes the segments from Whisper and updates the transcript.
         Uses helper methods to account for differences between backends.
@@ -289,6 +294,7 @@ class ServeClientBase(object):
         Args:
             segments (list): List of segments returned by the transcriber.
             duration (float): Duration of the current audio chunk.
+            get_speaker (callable, optional): Callback to get speaker for a given timestamp.
         
         Returns:
             dict or None: The last processed segment (if any).
@@ -310,7 +316,15 @@ class ServeClientBase(object):
                     continue
                 if self.get_segment_no_speech_prob(s) > self.no_speech_thresh:
                     continue
-                completed_segment = self.format_segment(start, end, text_, completed=True)
+                
+                speaker = None
+                if get_speaker:
+                    speaker_info = get_speaker(start + (end - start) / 2)
+                    speaker = speaker_info.get('primary_speaker')
+
+                completed_segment = self.format_segment(
+                    start, end, text_, completed=True, speaker=speaker, detected_language=self.language
+                )
                 self.transcript.append(completed_segment)
 
                 if self.translation_queue:
@@ -324,11 +338,21 @@ class ServeClientBase(object):
         if self.get_segment_no_speech_prob(segments[-1]) <= self.no_speech_thresh:
             self.current_out += segments[-1].text
             with self.lock:
+                start = self.timestamp_offset + self.get_segment_start(segments[-1])
+                end = self.timestamp_offset + min(duration, self.get_segment_end(segments[-1]))
+                
+                speaker = None
+                if get_speaker:
+                    speaker_info = get_speaker(start + (end - start) / 2)
+                    speaker = speaker_info.get('primary_speaker')
+                
                 last_segment = self.format_segment(
-                    self.timestamp_offset + self.get_segment_start(segments[-1]),
-                    self.timestamp_offset + min(duration, self.get_segment_end(segments[-1])),
+                    start,
+                    end,
                     self.current_out,
-                    completed=False
+                    completed=False,
+                    speaker=speaker,
+                    detected_language=self.language
                 )
 
         # Handle repeated output logic.
@@ -350,11 +374,21 @@ class ServeClientBase(object):
             if not self.text or self.text[-1].strip().lower() != self.current_out.strip().lower():
                 self.text.append(self.current_out)
                 with self.lock:
+                    start = self.timestamp_offset
+                    end = self.timestamp_offset + min(duration, self.end_time_for_same_output)
+                    
+                    speaker = None
+                    if get_speaker:
+                        speaker_info = get_speaker(start + (end - start) / 2)
+                        speaker = speaker_info.get('primary_speaker')
+
                     completed_segment = self.format_segment(
-                        self.timestamp_offset,
-                        self.timestamp_offset + min(duration, self.end_time_for_same_output),
+                        start,
+                        end,
                         self.current_out,
-                        completed=True
+                        completed=True,
+                        speaker=speaker,
+                        detected_language=self.language
                     )
                     self.transcript.append(completed_segment)
 
