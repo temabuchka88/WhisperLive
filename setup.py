@@ -62,8 +62,8 @@ setup(
         "openvino-tokenizers",
         "optimum", 
         "optimum-intel",
-        "diart",
-        "pyannote.audio",
+        "diart==0.9.2",
+        "pyannote.audio==3.4.0",
     ],
     python_requires=">=3.9"
 )

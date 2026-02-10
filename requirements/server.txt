@@ -27,5 +27,5 @@ uvicorn
 python-multipart
 
 # diarization
-diart
-pyannote.audio
+diart==0.9.2
+pyannote.audio==3.4.0
