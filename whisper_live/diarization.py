@@ -18,12 +18,16 @@ try:
     import rx.subject
     import torch
     DIART_AVAILABLE = True
-except ImportError:
+except Exception as e:
     DIART_AVAILABLE = False
     logging.warning(
-        "diart not installed. Install with: "
-        "pip install diart pyannote.audio"
+        f"diart or dependency import failed: {e}. Diarization will be disabled. "
+        "Install with: pip install diart pyannote.audio",
+        exc_info=True
     )
+    # Placeholder to avoid NameError: name 'AudioSource' is not defined
+    class AudioSource:
+        def __init__(self, *args, **kwargs): pass
 
 logging.basicConfig(level=logging.INFO)
 

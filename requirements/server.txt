@@ -28,4 +28,4 @@ python-multipart
 
 # diarization
 diart==0.9.2
-pyannote.audio==3.4.0
+pyannote.audio==4.0.4
