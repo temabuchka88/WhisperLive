@@ -17,16 +17,22 @@ try:
     from pyannote.core import Annotation
     import rx.subject
     import torch
+    import torchaudio
     DIART_AVAILABLE = True
 except Exception as e:
     DIART_AVAILABLE = False
     logging.warning(
-        f"diart or dependency import failed: {e}. Diarization will be disabled. "
-        "Install with: pip install diart pyannote.audio",
+        f"diart or dependency import failed: {e}. Diarization will be disabled.",
         exc_info=True
     )
-    # Placeholder to avoid NameError: name 'AudioSource' is not defined
+    # Placeholders to avoid NameError during module definition and execution
     class AudioSource:
+        def __init__(self, *args, **kwargs): pass
+    class Annotation:
+        def __init__(self, *args, **kwargs): pass
+    class SpeakerDiarization:
+        def __init__(self, *args, **kwargs): pass
+    class StreamingInference:
         def __init__(self, *args, **kwargs): pass
 
 logging.basicConfig(level=logging.INFO)

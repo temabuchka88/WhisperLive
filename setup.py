@@ -63,7 +63,7 @@ setup(
         "optimum", 
         "optimum-intel",
         "diart==0.9.2",
-        "pyannote.audio==3.4.0",
+        "pyannote.audio==4.4.0",
     ],
     python_requires=">=3.9"
 )
