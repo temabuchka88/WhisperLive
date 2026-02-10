@@ -2,20 +2,17 @@ PyAudio
 av
 scipy
 websocket-client
-faster-whisper==1.1.0
+faster-whisper
 websockets
-onnxruntime==1.17.0
+onnxruntime
 numba
 kaldialign
 soundfile
-scipy
-av
 jiwer
 evaluate
 numpy<2
-openai-whisper
-tokenizers==0.20.3
-transformers[torch]
+git+https://github.com/openai/whisper.git  # вместо openai-whisper==20240930
+tokenizers
 sentencepiece
 
 # openvino

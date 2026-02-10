@@ -14,7 +14,7 @@ WORKDIR /app
 
 # install the requirements for running the whisper-live server
 COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt && rm requirements.txt
+RUN pip install --no-cache-dir --use-deprecated=legacy-resolver -r requirements.txt && rm requirements.txt
 
 # make the paths of the nvidia libs installed as wheels visible. equivalent to:
 # export LD_LIBRARY_PATH=`python3 -c 'import os; import nvidia.cublas.lib; import nvidia.cudnn.lib; print(os.path.dirname(nvidia.cublas.lib.__file__) + ":" + os.path.dirname(nvidia.cudnn.lib.__file__))'`
