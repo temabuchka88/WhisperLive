@@ -7,7 +7,7 @@ RUN apt update && apt install -y portaudio19-dev && apt-get clean && rm -rf /var
 
 # update pip to support for whl.metadata -> less downloading
 RUN pip install --no-cache-dir -U "pip>=24"
-
+RUN pip install --no-cache-dir setuptools wheel
 # create a working directory
 RUN mkdir /app
 WORKDIR /app
