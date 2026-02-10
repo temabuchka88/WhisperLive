@@ -19,3 +19,7 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+
+
+volumes:
+  hf-cache:
