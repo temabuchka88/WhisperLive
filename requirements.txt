@@ -13,7 +13,7 @@ av
 jiwer
 evaluate
 numpy<2
-openai-whisper==20240930
+openai-whisper
 tokenizers==0.20.3
 transformers[torch]
 sentencepiece
