@@ -19,6 +19,8 @@ try:
     import torch
     import torchaudio
     import huggingface_hub
+    import pytorch_lightning
+    import pytorch_lightning.callbacks.early_stopping
     DIART_AVAILABLE = True
 except Exception as e:
     DIART_AVAILABLE = False
@@ -194,11 +196,9 @@ class DiarizationManager:
             pyannote.audio.core.task.Specifications,
             pyannote.audio.core.task.Resolution,
             pyannote.audio.core.task.Task,
-            # pyannote.audio.core.task.Signal,
             pyannote.core.annotation.Annotation,
+            pytorch_lightning.callbacks.early_stopping.EarlyStopping,
         ])
-        # torch.serialization.add_safe_globals([torch.pytorch_lightning.callbacks.early_stopping.EarlyStopping])
-        torch.serialization.add_safe_globals([torch.torch_version.TorchVersion])
         
         self.sample_rate = sample_rate
         self.callback = callback
