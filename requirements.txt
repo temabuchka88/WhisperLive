@@ -29,4 +29,4 @@ optimum-intel
 fastapi
 uvicorn
 python-multipart
-
+huggingface_hub

@@ -18,6 +18,7 @@ try:
     import rx.subject
     import torch
     import torchaudio
+    import huggingface_hub
     DIART_AVAILABLE = True
 except Exception as e:
     DIART_AVAILABLE = False
@@ -173,6 +174,13 @@ class DiarizationManager:
 
         if hf_token is not None:
             os.environ["HF_TOKEN"] = hf_token
+        elif os.environ.get("HF_TOKEN"):
+            hf_token = os.environ.get("HF_TOKEN")
+        
+        # Login to Hugging Face for model access
+        if hf_token:
+            huggingface_hub.login(token=hf_token)
+            logging.info("Logged in to Hugging Face")
         
 
         import torch
@@ -204,10 +212,12 @@ class DiarizationManager:
             
             # Explicitly load models with token
             segmentation = SegmentationModel.from_pretrained(
-                "pyannote/segmentation-3.0", 
+                "pyannote/segmentation-3.0",
+                # token=hf_token,
             )
             embedding = EmbeddingModel.from_pretrained(
-                "pyannote/embedding", 
+                "pyannote/embedding",
+                # token=hf_token,
             )
 
             config = SpeakerDiarizationConfig(
