@@ -194,7 +194,6 @@ class DiarizationManager:
             pyannote.audio.core.task.Specifications,
             pyannote.audio.core.task.Resolution,
             pyannote.audio.core.task.Task,
-            pyannote.audio.core.task.TaskOutput,
             pyannote.audio.core.task.Signal,
             pyannote.core.annotation.Annotation,
         ])
