@@ -194,9 +194,10 @@ class DiarizationManager:
             pyannote.audio.core.task.Specifications,
             pyannote.audio.core.task.Resolution,
             pyannote.audio.core.task.Task,
-            pyannote.audio.core.task.Signal,
+            # pyannote.audio.core.task.Signal,
             pyannote.core.annotation.Annotation,
         ])
+        # torch.serialization.add_safe_globals([torch.pytorch_lightning.callbacks.early_stopping.EarlyStopping])
         torch.serialization.add_safe_globals([torch.torch_version.TorchVersion])
         
         self.sample_rate = sample_rate
