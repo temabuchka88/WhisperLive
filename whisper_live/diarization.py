@@ -274,6 +274,13 @@ class DiarizationManager:
         
         # Log diarization results for debugging
         if len(annotation) > 0:
+            logging.info(f"[DIARIZATION] Annotation: {annotation}")
+            # Log all tracks (not just itertracks)
+            num_tracks = len(list(annotation.itertracks()))
+            unique_speakers = set()
+            for segment, _, label in annotation.itertracks(yield_label=True):
+                unique_speakers.add(label)
+            logging.info(f"[DIARIZATION] Num tracks: {num_tracks}, Unique speakers: {unique_speakers}")
             for segment, _, label in annotation.itertracks(yield_label=True):
                 logging.info(f"[DIARIZATION] Speaker: {label}, Time: {segment.start:.2f}s - {segment.end:.2f}s")
         
