@@ -187,10 +187,15 @@ class DiarizationManager:
         import pyannote.audio.core.task
         import pyannote.core.annotation
         
-        # Add safe globals for model loading (required for PyTorch 2.6+)
+        # Add all safe globals for model loading (required for PyTorch 2.6+)
+        # These classes are used by pyannote.audio models during checkpoint loading
         torch.serialization.add_safe_globals([
             pyannote.audio.core.task.Problem,
             pyannote.audio.core.task.Specifications,
+            pyannote.audio.core.task.Resolution,
+            pyannote.audio.core.task.Task,
+            pyannote.audio.core.task.TaskOutput,
+            pyannote.audio.core.task.Signal,
             pyannote.core.annotation.Annotation,
         ])
         torch.serialization.add_safe_globals([torch.torch_version.TorchVersion])
