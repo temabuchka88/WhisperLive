@@ -174,6 +174,18 @@ class DiarizationManager:
         if hf_token is not None:
             os.environ["HF_TOKEN"] = hf_token
         
+
+        import torch
+        import pyannote.audio.core.task
+        import pyannote.core.annotation
+        
+        # Add safe globals for model loading (required for PyTorch 2.6+)
+        torch.serialization.add_safe_globals([
+            pyannote.audio.core.task.Specifications,
+            pyannote.core.annotation.Annotation,
+        ])
+        torch.serialization.add_safe_globals([torch.torch_version.TorchVersion])
+        
         self.sample_rate = sample_rate
         self.callback = callback
         

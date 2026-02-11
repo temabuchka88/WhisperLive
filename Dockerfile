@@ -5,22 +5,26 @@ ARG DEBIAN_FRONTEND=noninteractive
 # install lib required for pyaudio
 RUN apt update && apt install -y portaudio19-dev && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# update pip to support for whl.metadata -> less downloading
+# update pip
 RUN pip install --no-cache-dir -U "pip>=24"
 RUN pip install --no-cache-dir setuptools wheel
-# create a working directory
+
 RUN mkdir /app
 WORKDIR /app
 
-# install the requirements for running the whisper-live server
+# Установить стабильную PyTorch 2.4 (меньше по размеру, надежнее)
+RUN pip install --no-cache-dir torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0 \
+    --index-url https://download.pytorch.org/whl/cu128
+
+# Скопировать и отредактировать requirements.txt
 COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt && rm requirements.txt
+# Удалить строки с torch и torchaudio (они уже установлены)
+RUN sed -i '/^torch/d; /^torchaudio/d' requirements.txt && \
+    pip install --no-cache-dir -r requirements.txt && \
+    rm requirements.txt
 
-# make the paths of the nvidia libs installed as wheels visible. equivalent to:
-# export LD_LIBRARY_PATH=`python3 -c 'import os; import nvidia.cublas.lib; import nvidia.cudnn.lib; print(os.path.dirname(nvidia.cublas.lib.__file__) + ":" + os.path.dirname(nvidia.cudnn.lib.__file__))'`
 ENV LD_LIBRARY_PATH="/usr/local/lib/python3.12/site-packages/nvidia/cublas/lib:/usr/local/lib/python3.12/site-packages/nvidia/cudnn/lib"
-
 COPY whisper_live /app/whisper_live
 COPY run_server.py /app
-
+ENV TORCH_LOAD_WEIGHTS_ONLY=0
 CMD ["python", "run_server.py", "--port", "8000", "--use_diarization", "-b", "faster_whisper"]
