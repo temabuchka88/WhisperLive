@@ -21,6 +21,15 @@ try:
     import huggingface_hub
     import pytorch_lightning
     import pytorch_lightning.callbacks.early_stopping
+    
+    # Monkey patch torch.load to use weights_only=False for PyTorch 2.6+
+    # This is required because diart/pyannote use torch.load internally
+    _original_torch_load = torch.load
+    def patched_torch_load(*args, **kwargs):
+        kwargs['weights_only'] = False
+        return _original_torch_load(*args, **kwargs)
+    torch.load = patched_torch_load
+    
     DIART_AVAILABLE = True
 except Exception as e:
     DIART_AVAILABLE = False
@@ -185,21 +194,8 @@ class DiarizationManager:
             logging.info("Logged in to Hugging Face")
         
 
-        import torch
-        import pyannote.audio.core.task
-        import pyannote.core.annotation
-        
-        # Add all safe globals for model loading (required for PyTorch 2.6+)
-        # These classes are used by pyannote.audio models during checkpoint loading
-        torch.serialization.add_safe_globals([
-            pyannote.audio.core.task.Problem,
-            pyannote.audio.core.task.Specifications,
-            pyannote.audio.core.task.Resolution,
-            pyannote.audio.core.task.Task,
-            pyannote.core.annotation.Annotation,
-            pytorch_lightning.callbacks.early_stopping.EarlyStopping,
-            torch.torch_version.TorchVersion,
-        ])
+        # Skip safe globals setup - using monkey patch instead
+        pass
         
         self.sample_rate = sample_rate
         self.callback = callback
