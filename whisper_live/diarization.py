@@ -164,6 +164,8 @@ class DiarizationManager:
         step: float = 0.5,
         latency: float = 0.5,
         tau_active: float = 0.6,
+        rho_update: float = 0.3,
+        delta_new: float = 1.0,
         callback: Optional[Callable[[Annotation], None]] = None,
         hf_token: Optional[str] = None,
     ):
@@ -175,6 +177,8 @@ class DiarizationManager:
             step: Duration of processing step in seconds
             latency: System latency in seconds
             tau_active: Threshold for active speaker detection
+            rho_update: How fast speaker embeddings are updated
+            delta_new: Threshold for creating a new speaker cluster
             callback: Function called with diarization results (Annotation)
             hf_token: HuggingFace token for pyannote models
         """
@@ -228,6 +232,8 @@ class DiarizationManager:
                 step=step,
                 latency=latency,
                 tau_active=tau_active,
+                rho_update=rho_update,
+                delta_new=delta_new,
             )
             self.pipeline = SpeakerDiarization(config)
             logging.info("Diart SpeakerDiarization pipeline initialized with HF token")
@@ -274,15 +280,17 @@ class DiarizationManager:
         
         # Log diarization results for debugging
         if len(annotation) > 0:
-            logging.info(f"[DIARIZATION] Annotation: {annotation}")
-            # Log all tracks (not just itertracks)
+            # Log all tracks
+            unique_speakers = sorted(list(set(label for _, _, label in annotation.itertracks(yield_label=True))))
             num_tracks = len(list(annotation.itertracks()))
-            unique_speakers = set()
-            for segment, _, label in annotation.itertracks(yield_label=True):
-                unique_speakers.add(label)
-            logging.info(f"[DIARIZATION] Num tracks: {num_tracks}, Unique speakers: {unique_speakers}")
-            for segment, _, label in annotation.itertracks(yield_label=True):
-                logging.info(f"[DIARIZATION] Speaker: {label}, Time: {segment.start:.2f}s - {segment.end:.2f}s")
+            
+            if num_tracks > 0:
+                logging.debug(f"[DIARIZATION] Annotation trace: {annotation}")
+                logging.info(f"[DIARIZATION] Speakers: {unique_speakers}, Tracks: {num_tracks}")
+                
+                # Log detailed segment info only if there are speakers detected
+                for segment, _, label in annotation.itertracks(yield_label=True):
+                    logging.info(f"[DIARIZATION] Speaker: {label} | {segment.start:.2f}s - {segment.end:.2f}s")
         
         # Call user callback if provided
         if self.callback:
