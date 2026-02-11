@@ -272,6 +272,11 @@ class DiarizationManager:
         with self.annotation_lock:
             self.latest_annotation = annotation
         
+        # Log diarization results for debugging
+        if len(annotation) > 0:
+            for segment, _, label in annotation.itertracks(yield_label=True):
+                logging.info(f"[DIARIZATION] Speaker: {label}, Time: {segment.start:.2f}s - {segment.end:.2f}s")
+        
         # Call user callback if provided
         if self.callback:
             try:
