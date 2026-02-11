@@ -198,6 +198,7 @@ class DiarizationManager:
             pyannote.audio.core.task.Task,
             pyannote.core.annotation.Annotation,
             pytorch_lightning.callbacks.early_stopping.EarlyStopping,
+            torch.torch_version.TorchVersion,
         ])
         
         self.sample_rate = sample_rate
