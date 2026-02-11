@@ -9,7 +9,7 @@ import queue
 import numpy as np
 from typing import Optional, Callable, Dict, List, Any
 import time
-
+import os
 try:
     from diart import SpeakerDiarization
     from diart.sources import AudioSource
@@ -76,19 +76,15 @@ class WhisperLiveAudioSource(AudioSource):
         self.is_active = False
         self.is_closed = False
         
-        # Stream subject (RxPY)
-        self.stream_subject = rx.subject.Subject()
+        # Stream subject (RxPY) - using simple attribute instead of property
+        # to avoid conflicts with diart's base AudioSource class
+        self.stream = rx.subject.Subject()
         
         logging.info(
             f"WhisperLiveAudioSource initialized: "
             f"chunk={chunk_duration}s, step={step_duration}s, sr={sample_rate}Hz"
         )
-    
-    @property
-    def stream(self):
-        """Return RxPY observable stream."""
-        return self.stream_subject
-    
+
     def add_audio(self, audio_chunk: np.ndarray):
         """
         Add audio chunk from WhisperLive to the processing queue.
@@ -122,7 +118,7 @@ class WhisperLiveAudioSource(AudioSource):
                     
                     # Emit to stream (reshape to (1, samples) for diart)
                     waveform = torch.from_numpy(chunk).reshape(1, -1)
-                    self.stream_subject.on_next(waveform)
+                    self.stream.on_next(waveform)
                     
                     # Slide buffer by step size
                     self.audio_buffer = self.audio_buffer[self.step_samples:]
@@ -134,7 +130,7 @@ class WhisperLiveAudioSource(AudioSource):
                 break
         
         # Cleanup
-        self.stream_subject.on_completed()
+        self.stream.on_completed()
         self.is_active = False
         logging.info("Diarization AudioSource stopped")
     
@@ -174,6 +170,9 @@ class DiarizationManager:
             raise ImportError(
                 "diart not available. Install with: pip install diart pyannote.audio"
             )
+
+        if hf_token is not None:
+            os.environ["HF_TOKEN"] = hf_token
         
         self.sample_rate = sample_rate
         self.callback = callback
@@ -187,17 +186,26 @@ class DiarizationManager:
         
         # Initialize diart pipeline
         try:
+            from diart import SpeakerDiarizationConfig
             from diart.models import SegmentationModel, EmbeddingModel
-            from diart.pipelines import SpeakerDiarizationConfig
             
-            # Using defaults which usually point to pyannote/segmentation-3.0 and pyannote/embedding
+            # Explicitly load models with token
+            segmentation = SegmentationModel.from_pretrained(
+                "pyannote/segmentation-3.0", 
+            )
+            embedding = EmbeddingModel.from_pretrained(
+                "pyannote/embedding", 
+            )
+
             config = SpeakerDiarizationConfig(
+                segmentation=segmentation,
+                embedding=embedding,
                 step=step,
                 latency=latency,
                 tau_active=tau_active,
             )
             self.pipeline = SpeakerDiarization(config)
-            logging.info("Diart SpeakerDiarization pipeline initialized")
+            logging.info("Diart SpeakerDiarization pipeline initialized with HF token")
         except Exception as e:
             logging.error(f"Failed to initialize diart pipeline: {e}")
             logging.error(

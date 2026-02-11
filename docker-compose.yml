@@ -7,6 +7,7 @@ services:
     command: python run_server.py --port 8000 --use_diarization -b faster_whisper
     environment:
       TZ: Europe/Minsk
+      HF_TOKEN: 
     volumes:
       - hf-cache:/root/.cache/huggingface/hub
     restart: always
