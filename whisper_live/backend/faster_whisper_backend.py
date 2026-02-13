@@ -203,8 +203,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         if info.language_probability > 0.5:
             self.language = info.language
             logging.info(f"Detected language {self.language} with probability {info.language_probability}")
-            self.websocket.send(json.dumps(
-                {"status": "active_transcription", "lines": [], "buffer_transcription": "", "buffer_diarization": "", "remaining_time_transcription": 0, "remaining_time_diarization": 0}))
+            self.send_transcription_to_client([])
 
     def transcribe_audio(self, input_sample):
         """
@@ -254,7 +253,9 @@ class ServeClientFasterWhisper(ServeClientBase):
             segments = self.prepare_segments(last_segment)
 
         if len(segments):
-            self.send_transcription_to_client(segments)
+            self.send_transcription_to_client(segments, buffer_transcription=self.current_out)
+        else:
+            self.send_no_audio_detected_to_client()
 
     def add_frames(self, frame_np):
         """

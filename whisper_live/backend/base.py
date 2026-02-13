@@ -93,6 +93,7 @@ class ServeClientBase(object):
 
                 if result is None or self.language is None:
                     self.timestamp_offset += duration
+                    self.send_no_audio_detected_to_client()
                     time.sleep(0.25)    # wait for voice activity, result is None when no voice activity
                     continue
                 self.handle_transcription_output(result, duration)
@@ -228,7 +229,7 @@ class ServeClientBase(object):
         """
         return input_bytes.shape[0] / self.RATE
 
-    def send_transcription_to_client(self, segments):
+    def send_transcription_to_client(self, segments, buffer_transcription="", buffer_diarization=""):
         """
         Sends the specified transcription segments to the client over the websocket connection.
 
@@ -243,14 +244,32 @@ class ServeClientBase(object):
                 json.dumps({
                     "status": "active_transcription",
                     "lines": segments,
-                    "buffer_transcription": "", # Not used in this backend yet
-                    "buffer_diarization": "",    # Not used in this backend yet
+                    "buffer_transcription": buffer_transcription,
+                    "buffer_diarization": buffer_diarization,
                     "remaining_time_transcription": 0,
                     "remaining_time_diarization": 0
                 })
             )
         except Exception as e:
             logging.error(f"[ERROR]: Sending data to client: {e}")
+
+    def send_no_audio_detected_to_client(self):
+        """
+        Sends a no audio detected message to the client.
+        """
+        try:
+            self.websocket.send(
+                json.dumps({
+                    "status": "no_audio_detected",
+                    "lines": [],
+                    "buffer_transcription": "",
+                    "buffer_diarization": "",
+                    "remaining_time_transcription": 0,
+                    "remaining_time_diarization": 0
+                })
+            )
+        except Exception as e:
+            logging.error(f"[ERROR]: Sending no audio detected to client: {e}")
 
     def disconnect(self):
         """
