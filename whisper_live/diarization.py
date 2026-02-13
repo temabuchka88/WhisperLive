@@ -161,11 +161,11 @@ class DiarizationManager:
     def __init__(
         self,
         sample_rate: int = 16000,
-        step: float = 0.5,
-        latency: float = 0.5,
-        tau_active: float = 0.6,
+        step: float = 0.3,
+        latency: float = 3,
+        tau_active: float = 0.5,
         rho_update: float = 0.3,
-        delta_new: float = 1.0,
+        delta_new: float = 0.28,
         callback: Optional[Callable[[Annotation], None]] = None,
         hf_token: Optional[str] = None,
     ):
@@ -207,7 +207,7 @@ class DiarizationManager:
         # Create audio source
         self.audio_source = WhisperLiveAudioSource(
             sample_rate=sample_rate,
-            chunk_duration=5.0,  # diart default
+            chunk_duration=3.0,  # diart default
             step_duration=step,
         )
         
