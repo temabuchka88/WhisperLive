@@ -121,6 +121,11 @@ class WhisperLiveAudioSource(AudioSource):
                 # Get audio with timeout to check is_closed periodically
                 audio_chunk = self.audio_queue.get(timeout=0.1)
                 
+                # Validate audio chunk
+                if audio_chunk is None or len(audio_chunk) == 0:
+                    logging.warning("Received empty audio chunk, skipping")
+                    continue
+                
                 # Append to buffer
                 self.audio_buffer = np.concatenate([self.audio_buffer, audio_chunk])
                 
@@ -131,19 +136,31 @@ class WhisperLiveAudioSource(AudioSource):
                     
                     # Emit to stream (reshape to (1, samples) for diart)
                     waveform = torch.from_numpy(chunk).reshape(1, -1)
-                    self.stream.on_next(waveform)
+                    try:
+                        self.stream.on_next(waveform)
+                    except Exception as stream_error:
+                        logging.error(f"Error emitting to stream: {stream_error}", exc_info=True)
                     
                     # Slide buffer by step size
-                    self.audio_buffer = self.audio_buffer[self.step_samples:]
+                    if self.step_samples > 0 and len(self.audio_buffer) >= self.step_samples:
+                        self.audio_buffer = self.audio_buffer[self.step_samples:]
+                    else:
+                        # Fallback: clear buffer if step size is invalid
+                        self.audio_buffer = np.array([], dtype=np.float32)
+                        break
                     
             except queue.Empty:
                 continue
             except Exception as e:
-                logging.error(f"Error in diarization read loop: {e}")
-                break
+                logging.error(f"Error in diarization read loop: {e}", exc_info=True)
+                # Don't break - try to continue processing
+                continue
         
         # Cleanup
-        self.stream.on_completed()
+        try:
+            self.stream.on_completed()
+        except Exception as e:
+            logging.error(f"Error completing stream: {e}")
         self.is_active = False
         logging.info("Diarization AudioSource stopped")
     
