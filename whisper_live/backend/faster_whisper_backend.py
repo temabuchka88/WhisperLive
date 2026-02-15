@@ -248,6 +248,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         segments = []
         if len(result):
             self.t_start = None
+            # Use async diarization with speaker caching for stability
             get_speaker = self.diarization_manager.get_current_speakers if self.use_diarization and self.diarization_manager else None
             last_segment = self.update_segments(result, duration, get_speaker=get_speaker)
             segments = self.prepare_segments(last_segment)
@@ -257,11 +258,32 @@ class ServeClientFasterWhisper(ServeClientBase):
         else:
             self.send_no_audio_detected_to_client()
 
+    def _get_current_audio_chunk(self, duration):
+        """
+        Get the current audio chunk being transcribed.
+        
+        Returns:
+            np.ndarray: Audio samples for the current chunk, or None if unavailable.
+        """
+        with self.lock:
+            if self.frames_np is None:
+                return None
+            # Calculate which part of the buffer corresponds to the current chunk
+            samples_take = max(0, (self.timestamp_offset - self.frames_offset) * self.RATE)
+            current_chunk = self.frames_np[int(samples_take):].copy()
+            if len(current_chunk) == 0:
+                return None
+            return current_chunk
+
     def add_frames(self, frame_np):
         """
         Add audio frames to the ongoing audio stream buffer and diarization manager.
+        
+        Audio is added to diarization asynchronously for background processing.
+        The speaker cache in get_current_speakers provides stability.
         """
         super().add_frames(frame_np)
+        # Keep async audio addition for background diarization processing
         if self.use_diarization and self.diarization_manager:
             self.diarization_manager.add_audio(frame_np)
 

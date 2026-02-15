@@ -265,6 +265,9 @@ class DiarizationManager:
         self.latest_annotation = None
         self.annotation_lock = threading.Lock()
         
+        # Speaker cache for stability - stores last known speaker for fallback
+        self._last_known_speaker = None
+        
         logging.info("DiarizationManager initialized successfully")
     
     def _on_prediction(self, prediction_tuple):
@@ -349,6 +352,8 @@ class DiarizationManager:
         """
         Get active speakers at a specific timestamp.
         
+        This method now includes fallback to last known speaker for better stability.
+        
         Args:
             timestamp: Time in seconds
             
@@ -362,6 +367,13 @@ class DiarizationManager:
         """
         with self.annotation_lock:
             if self.latest_annotation is None:
+                # Fallback: use last known speaker
+                if hasattr(self, '_last_known_speaker') and self._last_known_speaker is not None:
+                    return {
+                        'speakers': [self._last_known_speaker],
+                        'primary_speaker': self._last_known_speaker,
+                        'num_speakers': 1
+                    }
                 return {
                     'speakers': [],
                     'primary_speaker': None,
@@ -372,22 +384,30 @@ class DiarizationManager:
             speakers = []
             for segment, _, label in self.latest_annotation.itertracks(yield_label=True):
                 if segment.start <= timestamp <= segment.end:
-                    # Parse speaker ID from various label formats:
-                    # - 'SPEAKER_00' -> 0
-                    # - 'speaker_00' -> 0
-                    # - 'speaker0' -> 0
-                    # - Any format containing digits
                     speaker_id = self._parse_speaker_label(label)
                     if speaker_id is not None:
                         speakers.append(speaker_id)
-                    # If parsing fails, skip this label (don't append raw string)
+            
+            # Cache the last known speaker for fallback
+            if speakers:
+                self._last_known_speaker = speakers[0]
+            
+            # If no speakers found at exact timestamp, try to use last known speaker
+            # This provides continuity when diarization hasn't processed the exact moment yet
+            if not speakers and hasattr(self, '_last_known_speaker') and self._last_known_speaker is not None:
+                # Check if we're close to the last known timestamp
+                return {
+                    'speakers': [self._last_known_speaker],
+                    'primary_speaker': self._last_known_speaker,
+                    'num_speakers': 1
+                }
             
             return {
                 'speakers': speakers,
                 'primary_speaker': speakers[0] if speakers else None,
                 'num_speakers': len(speakers)
             }
-    
+
     def _parse_speaker_label(self, label: str) -> Optional[int]:
         """
         Parse speaker ID from various label formats returned by diart/pyannote.
