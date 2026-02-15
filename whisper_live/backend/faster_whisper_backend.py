@@ -248,8 +248,12 @@ class ServeClientFasterWhisper(ServeClientBase):
         segments = []
         if len(result):
             self.t_start = None
-            # Use async diarization with speaker caching for stability
-            get_speaker = self.diarization_manager.get_current_speakers if self.use_diarization and self.diarization_manager else None
+            # Use blocking diarization to ensure speaker data is available before sending
+            get_speaker = None
+            if self.use_diarization and self.diarization_manager:
+                # Create a blocking wrapper with timeout (e.g., 2 seconds)
+                get_speaker = lambda ts: self.diarization_manager.get_speakers_blocking(ts, timeout=2.0)
+            
             last_segment = self.update_segments(result, duration, get_speaker=get_speaker)
             segments = self.prepare_segments(last_segment)
 

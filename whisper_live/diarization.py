@@ -265,6 +265,10 @@ class DiarizationManager:
         self.latest_annotation = None
         self.annotation_lock = threading.Lock()
         
+        # Synchronization for blocking speaker retrieval
+        self.annotation_condition = threading.Condition(self.annotation_lock)
+        self.last_processed_timestamp = 0.0
+        
         # Speaker cache for stability - stores last known speaker for fallback
         self._last_known_speaker = None
         
@@ -279,8 +283,22 @@ class DiarizationManager:
         """
         annotation, waveform = prediction_tuple
         
-        with self.annotation_lock:
+        with self.annotation_condition:
             self.latest_annotation = annotation
+            
+            # Update last processed timestamp based on annotation
+            # We look for the latest end time in the annotation segments
+            max_timestamp = 0.0
+            if len(annotation) > 0:
+                for segment, _, _ in annotation.itertracks(yield_label=True):
+                    if segment.end > max_timestamp:
+                        max_timestamp = segment.end
+                
+            if max_timestamp > self.last_processed_timestamp:
+                self.last_processed_timestamp = max_timestamp
+            
+            # Notify all waiters that new data is available
+            self.annotation_condition.notify_all()
         
         # Log diarization results for debugging
         if len(annotation) > 0:
@@ -365,7 +383,7 @@ class DiarizationManager:
                 'num_speakers': 2
             }
         """
-        with self.annotation_lock:
+        with self.annotation_condition:
             if self.latest_annotation is None:
                 # Fallback: use last known speaker
                 if hasattr(self, '_last_known_speaker') and self._last_known_speaker is not None:
@@ -407,6 +425,51 @@ class DiarizationManager:
                 'primary_speaker': speakers[0] if speakers else None,
                 'num_speakers': len(speakers)
             }
+
+    def get_speakers_blocking(self, timestamp: float, timeout: float = 2.0) -> Optional[Dict[str, Any]]:
+        """
+        Get active speakers at a specific timestamp, waiting if necessary.
+        
+        This method blocks until diarization has processed the audio up to the requested timestamp
+        or the timeout is reached.
+        
+        Args:
+            timestamp: Time in seconds (absolute audio time).
+            timeout: Maximum time to wait in seconds. Defaults to 2.0.
+            
+        Returns:
+            Dictionary with speaker information if available within timeout, otherwise None.
+            {
+                'speakers': [0, 1],
+                'primary_speaker': 0,
+                'num_speakers': 2
+            }
+        """
+        start_time = time.time()
+        
+        with self.annotation_condition:
+            # Wait loop
+            while self.last_processed_timestamp < timestamp:
+                remaining_time = timeout - (time.time() - start_time)
+                
+                if remaining_time <= 0:
+                    logging.warning(f"[Diarization] Timeout waiting for timestamp {timestamp}. "
+                                   f"Processed: {self.last_processed_timestamp}")
+                    # Return None on timeout to indicate we should proceed without speakers
+                    return None
+                
+                # Wait for new annotation data
+                notified = self.annotation_condition.wait(timeout=remaining_time)
+                
+                # Check if we were woken up by new data or just timed out
+                # (though wait returns bool, checking processed timestamp is safer)
+                if self.last_processed_timestamp >= timestamp:
+                    break
+            
+            # If we are here, we have data or timed out.
+            # If timed out (processed < timestamp), we already returned above.
+            # Now get speakers using the same logic as get_current_speakers.
+            return self.get_current_speakers(timestamp)
 
     def _parse_speaker_label(self, label: str) -> Optional[int]:
         """
