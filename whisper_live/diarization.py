@@ -7,6 +7,7 @@ import logging
 import threading
 import queue
 import numpy as np
+import re
 from typing import Optional, Callable, Dict, List, Any
 import time
 import os
@@ -371,19 +372,46 @@ class DiarizationManager:
             speakers = []
             for segment, _, label in self.latest_annotation.itertracks(yield_label=True):
                 if segment.start <= timestamp <= segment.end:
-                    # Convert 'SPEAKER_00' to 0
-                    try:
-                        speaker_id = int(label.split('_')[-1])
+                    # Parse speaker ID from various label formats:
+                    # - 'SPEAKER_00' -> 0
+                    # - 'speaker_00' -> 0
+                    # - 'speaker0' -> 0
+                    # - Any format containing digits
+                    speaker_id = self._parse_speaker_label(label)
+                    if speaker_id is not None:
                         speakers.append(speaker_id)
-                    except (ValueError, IndexError):
-                        # Fallback if label format is different
-                        speakers.append(label)
+                    # If parsing fails, skip this label (don't append raw string)
             
             return {
                 'speakers': speakers,
                 'primary_speaker': speakers[0] if speakers else None,
                 'num_speakers': len(speakers)
             }
+    
+    def _parse_speaker_label(self, label: str) -> Optional[int]:
+        """
+        Parse speaker ID from various label formats returned by diart/pyannote.
+        
+        Args:
+            label: Speaker label string (e.g., 'SPEAKER_00', 'speaker0', 'speaker_01')
+        
+        Returns:
+            Speaker ID as integer, or None if parsing fails
+        """
+        if not label:
+            return None
+        
+        # Try to extract numeric part from the label using regex
+        # Matches patterns like: speaker0, SPEAKER_00, speaker_01, etc.
+        match = re.search(r'(\d+)', str(label))
+        if match:
+            try:
+                return int(match.group(1))
+            except (ValueError, IndexError):
+                pass
+        
+        # If no digits found, return None
+        return None
     
     def stop(self):
         """Stop diarization processing."""
