@@ -7,12 +7,11 @@ services:
     command: python run_server.py --port 8000 --use_diarization -b faster_whisper
     environment:
       TZ: Europe/Minsk
-      HF_TOKEN: 
     volumes:
       - hf-cache:/root/.cache/huggingface/hub
     restart: always
     ports:
-      - "100.125.80.125:5555:8000"
+      - "100.125.80.125:8001:8000"
     deploy:
       resources:
         reservations:
@@ -20,7 +19,14 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    networks:
+      - anet
 
 
 volumes:
   hf-cache:
+
+networks:
+  anet:
+    name: anet
+    external: true
