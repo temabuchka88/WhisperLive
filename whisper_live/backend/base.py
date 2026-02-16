@@ -338,8 +338,14 @@ class ServeClientBase(object):
                 
                 speaker = None
                 if get_speaker:
-                    speaker_info = get_speaker(start + (end - start) / 2)
-                    speaker = speaker_info.get('primary_speaker')
+                    try:
+                        speaker_info = get_speaker(start + (end - start) / 2)
+                        # Safe access - handle None from get_speaker gracefully
+                        speaker = speaker_info.get('primary_speaker') if speaker_info else None
+                        if speaker is None and speaker_info:
+                            logging.debug(f"No speaker found at {start:.2f}s")
+                    except Exception as e:
+                        logging.warning(f"Error getting speaker info: {e}")
 
                 completed_segment = self.format_segment(
                     start, end, text_, completed=True, speaker=speaker, detected_language=self.language
@@ -362,8 +368,12 @@ class ServeClientBase(object):
                 
                 speaker = None
                 if get_speaker:
-                    speaker_info = get_speaker(start + (end - start) / 2)
-                    speaker = speaker_info.get('primary_speaker')
+                    try:
+                        speaker_info = get_speaker(start + (end - start) / 2)
+                        # Safe access - handle None from get_speaker gracefully
+                        speaker = speaker_info.get('primary_speaker') if speaker_info else None
+                    except Exception as e:
+                        logging.warning(f"Error getting speaker info: {e}")
                 
                 last_segment = self.format_segment(
                     start,
@@ -398,8 +408,12 @@ class ServeClientBase(object):
                     
                     speaker = None
                     if get_speaker:
-                        speaker_info = get_speaker(start + (end - start) / 2)
-                        speaker = speaker_info.get('primary_speaker')
+                        try:
+                            speaker_info = get_speaker(start + (end - start) / 2)
+                            # Safe access - handle None from get_speaker gracefully
+                            speaker = speaker_info.get('primary_speaker') if speaker_info else None
+                        except Exception as e:
+                            logging.warning(f"Error getting speaker info: {e}")
 
                     completed_segment = self.format_segment(
                         start,

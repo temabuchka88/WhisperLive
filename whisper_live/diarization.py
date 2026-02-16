@@ -112,9 +112,14 @@ class WhisperLiveAudioSource(AudioSource):
         """
         Main read loop - required by AudioSource interface.
         Processes audio from queue and emits chunks to stream.
+        
+        Includes rate limiting to prevent "pop from empty list" errors
+        by synchronizing chunk emission with real-time audio duration.
         """
         self.is_active = True
         logging.info("Diarization AudioSource started reading")
+        
+        last_chunk_time = None
         
         while not self.is_closed:
             try:
@@ -125,6 +130,17 @@ class WhisperLiveAudioSource(AudioSource):
                 if audio_chunk is None or len(audio_chunk) == 0:
                     logging.warning("Received empty audio chunk, skipping")
                     continue
+                
+                # Rate limiting: wait before emitting to match real-time duration
+                # This helps prevent "pop from empty list" in diart's internal queues
+                if last_chunk_time is not None:
+                    elapsed = time.time() - last_chunk_time
+                    # Calculate expected duration of the chunk we just processed
+                    expected_duration = self.chunk_samples / self.sample_rate
+                    sleep_time = expected_duration - elapsed
+                    if sleep_time > 0.005:  # At least 5ms to avoid busy-waiting
+                        time.sleep(sleep_time)
+                last_chunk_time = time.time()
                 
                 # Append to buffer
                 self.audio_buffer = np.concatenate([self.audio_buffer, audio_chunk])
@@ -308,27 +324,28 @@ class DiarizationManager:
         """
         annotation, waveform = prediction_tuple
         
-        with self.annotation_condition:
-            self.latest_annotation = annotation
-            
-            # Update last processed timestamp based on annotation
-            # We look for the latest end time in the annotation segments
-            max_timestamp = 0.0
-            if len(annotation) > 0:
+        # Check if annotation is valid (has tracks) before updating
+        has_valid_tracks = len(annotation) > 0 and len(list(annotation.itertracks())) > 0
+        
+        if has_valid_tracks:
+            with self.annotation_condition:
+                self.latest_annotation = annotation
+                
+                # Update last processed timestamp based on annotation
+                # We look for the latest end time in the annotation segments
+                max_timestamp = 0.0
                 for segment, _, _ in annotation.itertracks(yield_label=True):
                     if segment.end > max_timestamp:
                         max_timestamp = segment.end
+                
+                # Update based on annotation if available, otherwise rely on submitted audio
+                if max_timestamp > self.last_processed_timestamp:
+                    self.last_processed_timestamp = max_timestamp
+                
+                # Notify all waiters that new data is available
+                self.annotation_condition.notify_all()
             
-            # Update based on annotation if available, otherwise rely on submitted audio
-            if max_timestamp > self.last_processed_timestamp:
-                self.last_processed_timestamp = max_timestamp
-            
-            # Notify all waiters that new data is available
-            self.annotation_condition.notify_all()
-        
-        # Log diarization results for debugging
-        if len(annotation) > 0:
-            # Log all tracks
+            # Log diarization results for debugging
             unique_speakers = sorted(list(set(label for _, _, label in annotation.itertracks(yield_label=True))))
             num_tracks = len(list(annotation.itertracks()))
             
@@ -339,6 +356,12 @@ class DiarizationManager:
                 # Log detailed segment info only if there are speakers detected
                 for segment, _, label in annotation.itertracks(yield_label=True):
                     logging.info(f"[DIARIZATION] Speaker: {label} | {segment.start:.2f}s - {segment.end:.2f}s")
+        else:
+            # Empty annotation - don't update latest_annotation, keep previous for fallback
+            logging.debug(
+                f"[Diarization] Empty annotation received, preserving previous annotation. "
+                f"Annotation tracks: {len(annotation) if annotation else 0}"
+            )
         
         # Call user callback if provided
         if self.callback:
@@ -462,19 +485,22 @@ class DiarizationManager:
                 'num_speakers': len(speakers)
             }
 
-    def get_speakers_blocking(self, timestamp: float, timeout: float = 2.0) -> Optional[Dict[str, Any]]:
+    def get_speakers_blocking(self, timestamp: float, timeout: float = 2.0) -> Dict[str, Any]:
         """
         Get active speakers at a specific timestamp, waiting if necessary.
         
         This method blocks until diarization has processed the audio up to the requested timestamp
         or the timeout is reached.
         
+        IMPORTANT: This method NEVER returns None. It always returns a valid dictionary,
+        using fallback to last known speaker if timeout occurs.
+        
         Args:
             timestamp: Time in seconds (absolute audio time).
             timeout: Maximum time to wait in seconds. Defaults to 2.0. Use <= 0 for infinite wait.
             
         Returns:
-            Dictionary with speaker information if available within timeout, otherwise None.
+            Dictionary with speaker information:
             {
                 'speakers': [0, 1],
                 'primary_speaker': 0,
@@ -490,20 +516,34 @@ class DiarizationManager:
                     remaining_time = timeout - (time.time() - start_time)
                     
                     if remaining_time <= 0:
-                        logging.warning(f"[Diarization] Timeout waiting for timestamp {timestamp}. "
-                                       f"Processed: {self.last_processed_timestamp}")
-                        # Return None on timeout to indicate we should proceed without speakers
-                        return None
+                        # TIMEOUT OCCURRED - use fallback instead of returning None
+                        logging.warning(
+                            f"[Diarization] Timeout waiting for timestamp {timestamp:.2f}s "
+                            f"(processed: {self.last_processed_timestamp:.2f}s). "
+                            f"Using fallback speaker cache."
+                        )
+                        # Use cached last known speaker instead of returning None
+                        if hasattr(self, '_last_known_speaker') and self._last_known_speaker is not None:
+                            return {
+                                'speakers': [self._last_known_speaker],
+                                'primary_speaker': self._last_known_speaker,
+                                'num_speakers': 1
+                            }
+                        # No cached speaker - return empty but valid dict
+                        return {
+                            'speakers': [],
+                            'primary_speaker': None,
+                            'num_speakers': 0
+                        }
                     
                     # Wait for new annotation data
                     notified = self.annotation_condition.wait(timeout=remaining_time)
                 else:
                     # Infinite wait
-                    logging.info(f"[Diarization] Waiting indefinitely for timestamp {timestamp}...")
+                    logging.info(f"[Diarization] Waiting indefinitely for timestamp {timestamp:.2f}s...")
                     self.annotation_condition.wait()
                 
                 # Check if we were woken up by new data or just timed out
-                # (though wait returns bool, checking processed timestamp is safer)
                 if self.last_processed_timestamp >= timestamp:
                     break
             
