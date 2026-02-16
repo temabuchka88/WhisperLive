@@ -138,6 +138,11 @@ class WhisperLiveAudioSource(AudioSource):
                     waveform = torch.from_numpy(chunk).reshape(1, -1)
                     try:
                         self.stream.on_next(waveform)
+                    except IndexError as e:
+                        if "pop from empty list" in str(e):
+                             logging.warning(f"Ignored 'pop from empty list' in diart pipeline. Chunk skipped.")
+                        else:
+                             logging.error(f"Index error in diart pipeline: {e}")
                     except Exception as stream_error:
                         logging.error(f"Error emitting to stream: {stream_error}", exc_info=True)
                     
