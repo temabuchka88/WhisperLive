@@ -286,6 +286,9 @@ class DiarizationManager:
         self.annotation_condition = threading.Condition(self.annotation_lock)
         self.last_processed_timestamp = 0.0
         
+        # Track total audio submitted to handle silent gaps
+        self.total_audio_submitted = 0.0
+        
         # Speaker cache for stability - stores last known speaker for fallback
         self._last_known_speaker = None
         
@@ -310,7 +313,8 @@ class DiarizationManager:
                 for segment, _, _ in annotation.itertracks(yield_label=True):
                     if segment.end > max_timestamp:
                         max_timestamp = segment.end
-                
+            
+            # Update based on annotation if available, otherwise rely on submitted audio
             if max_timestamp > self.last_processed_timestamp:
                 self.last_processed_timestamp = max_timestamp
             
@@ -381,6 +385,16 @@ class DiarizationManager:
             audio_chunk: Audio samples (float32 numpy array)
         """
         if self.running:
+            # Update total audio submitted to track progress even during silence
+            self.total_audio_submitted += len(audio_chunk) / self.sample_rate
+            
+            # Also update last_processed_timestamp to track input progress
+            # (subtracting a small latency margin to be safe)
+            with self.annotation_condition:
+                if self.total_audio_submitted > self.last_processed_timestamp:
+                    self.last_processed_timestamp = self.total_audio_submitted - self.latency
+                    self.annotation_condition.notify_all()
+            
             self.audio_source.add_audio(audio_chunk)
     
     def get_current_speakers(self, timestamp: float) -> Dict[str, Any]:
@@ -452,7 +466,7 @@ class DiarizationManager:
         
         Args:
             timestamp: Time in seconds (absolute audio time).
-            timeout: Maximum time to wait in seconds. Defaults to 2.0.
+            timeout: Maximum time to wait in seconds. Defaults to 2.0. Use <= 0 for infinite wait.
             
         Returns:
             Dictionary with speaker information if available within timeout, otherwise None.
@@ -467,16 +481,21 @@ class DiarizationManager:
         with self.annotation_condition:
             # Wait loop
             while self.last_processed_timestamp < timestamp:
-                remaining_time = timeout - (time.time() - start_time)
-                
-                if remaining_time <= 0:
-                    logging.warning(f"[Diarization] Timeout waiting for timestamp {timestamp}. "
-                                   f"Processed: {self.last_processed_timestamp}")
-                    # Return None on timeout to indicate we should proceed without speakers
-                    return None
-                
-                # Wait for new annotation data
-                notified = self.annotation_condition.wait(timeout=remaining_time)
+                if timeout > 0:
+                    remaining_time = timeout - (time.time() - start_time)
+                    
+                    if remaining_time <= 0:
+                        logging.warning(f"[Diarization] Timeout waiting for timestamp {timestamp}. "
+                                       f"Processed: {self.last_processed_timestamp}")
+                        # Return None on timeout to indicate we should proceed without speakers
+                        return None
+                    
+                    # Wait for new annotation data
+                    notified = self.annotation_condition.wait(timeout=remaining_time)
+                else:
+                    # Infinite wait
+                    logging.info(f"[Diarization] Waiting indefinitely for timestamp {timestamp}...")
+                    self.annotation_condition.wait()
                 
                 # Check if we were woken up by new data or just timed out
                 # (though wait returns bool, checking processed timestamp is safer)

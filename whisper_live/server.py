@@ -274,7 +274,8 @@ class TranscriptionServer:
                     same_output_threshold=options.get("same_output_threshold", 10),
                     cache_path=self.cache_path,
                     translation_queue=translation_queue,
-                    use_diarization=options.get("use_diarization", False)
+                    use_diarization=options.get("use_diarization", False),
+                    diarization_timeout=options.get("diarization_timeout", 0.0)
                 )
 
                 logging.info("Running faster_whisper backend.")

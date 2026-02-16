@@ -35,6 +35,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         cache_path="~/.cache/whisper-live/",
         translation_queue=None,
         use_diarization=False,
+        diarization_timeout=0.0,  # 0 means infinite wait
     ):
         """
         Initialize a ServeClient instance.
@@ -86,6 +87,10 @@ class ServeClientFasterWhisper(ServeClientBase):
             except Exception as e:
                 logging.error(f"[Diarization] Failed to initialize: {e}")
                 self.use_diarization = False
+        
+        # Store diarization timeout (0 means infinite wait)
+        self.diarization_timeout = diarization_timeout
+        
         self.model_sizes = [
             "tiny", "tiny.en", "base", "base.en", "small", "small.en",
             "medium", "medium.en", "large-v2", "large-v3", "distil-small.en",
@@ -251,8 +256,9 @@ class ServeClientFasterWhisper(ServeClientBase):
             # Use blocking diarization to ensure speaker data is available before sending
             get_speaker = None
             if self.use_diarization and self.diarization_manager:
-                # Create a blocking wrapper with timeout (e.g., 2 seconds)
-                get_speaker = lambda ts: self.diarization_manager.get_speakers_blocking(ts, timeout=2.0)
+                # Create a blocking wrapper with configurable timeout
+                # Use self.diarization_timeout (0 means infinite wait)
+                get_speaker = lambda ts: self.diarization_manager.get_speakers_blocking(ts, timeout=self.diarization_timeout)
             
             last_segment = self.update_segments(result, duration, get_speaker=get_speaker)
             segments = self.prepare_segments(last_segment)
