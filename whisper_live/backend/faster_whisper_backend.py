@@ -77,7 +77,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 self.diarization_manager = create_diarization_manager(
                     sample_rate=self.RATE,
                     step=0.5,
-                    latency=0.5,
+                    latency=1.5,  # Increased from 0.5 to 1.5 for more stable diart processing
                 )
                 if self.diarization_manager:
                     self.diarization_manager.start()

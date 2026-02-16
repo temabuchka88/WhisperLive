@@ -156,11 +156,18 @@ class WhisperLiveAudioSource(AudioSource):
                         self.stream.on_next(waveform)
                     except IndexError as e:
                         if "pop from empty list" in str(e):
-                             logging.warning(f"Ignored 'pop from empty list' in diart pipeline. Chunk skipped.")
+                             logging.warning(f"[DIARIZATION] Ignoring 'pop from empty list' error - diart internal queue issue")
                         else:
-                             logging.error(f"Index error in diart pipeline: {e}")
+                             logging.error(f"[DIARIZATION] Index error in stream.on_next: {e}")
+                    except RuntimeError as e:
+                        # Diart may throw RuntimeError during inference - log and continue
+                        if "pop from empty list" in str(e):
+                            logging.warning(f"[DIARIZATION] Ignoring runtime error: {e}")
+                        else:
+                            logging.error(f"[DIARIZATION] Runtime error in stream.on_next: {e}")
                     except Exception as stream_error:
-                        logging.error(f"Error emitting to stream: {stream_error}", exc_info=True)
+                        # Catch-all to prevent the read loop from crashing
+                        logging.error(f"[DIARIZATION] Unexpected error emitting to stream: {stream_error}", exc_info=True)
                     
                     # Slide buffer by step size
                     if self.step_samples > 0 and len(self.audio_buffer) >= self.step_samples:
@@ -200,7 +207,7 @@ class DiarizationManager:
     def __init__(
         self,
         sample_rate: int = 16000,
-        step: float = 0.3,
+        step: float = 0.5,  # Changed from 0.3 to 0.5 for better diart stability
         latency: float = 3,
         tau_active: float = 0.5,
         rho_update: float = 0.3,
@@ -244,9 +251,11 @@ class DiarizationManager:
         self.callback = callback
         
         # Create audio source
+        # IMPORTANT: Use larger chunk_duration (5.0s) and step (0.5s) for better diart stability
+        # These values match diart's default recommendations for streaming inference
         self.audio_source = WhisperLiveAudioSource(
             sample_rate=sample_rate,
-            chunk_duration=3.0,  # diart default
+            chunk_duration=5.0,  # diart default - larger chunks for more stable processing
             step_duration=step,
         )
         
